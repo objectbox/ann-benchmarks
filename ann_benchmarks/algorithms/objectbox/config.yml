@@ -1,0 +1,18 @@
+float:
+  euclidean:
+  - base_args: ['@metric', '@dimension']
+    constructor: ObjectBox
+    disabled: false
+    docker_tag: ann-benchmarks-objectbox
+    module: ann_benchmarks.algorithms.objectbox
+    name: objectbox
+    run_groups:
+      default:
+        args: [
+          [16, 32, 64, 96],  # M
+          [32, 64, 128, 256, 512]  # ef_construction
+        ]
+        query_args: [
+          [16, 32, 64, 128]  # ef
+        ]
+
