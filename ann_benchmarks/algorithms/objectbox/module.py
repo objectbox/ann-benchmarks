@@ -2,6 +2,7 @@ from os import path
 import numpy as np
 from typing import *
 from multiprocessing.pool import ThreadPool
+import threading
 from ..base.module import BaseANN
 import objectbox
 from objectbox import *
@@ -55,23 +56,26 @@ class ObjectBox(BaseANN):
 
         self._box = objectbox.Box(self._ob, self._entity_class)
 
+        self._read_tx = {}
+
         self._batch_results = None
         self._ef_search = None
 
     def _ensure_read_tx(self):
-        """ Ensures a read TX is created for querying. """
-        if hasattr(self, "_read_tx"):
+        """ Ensures a read TX is created for the current thread. """
+        thread_id = threading.get_ident()
+        if thread_id in self._read_tx:
             return
-        print("[objectbox] Beginning read TX...")
-        self._read_tx = obx_txn_read(self._ob._c_store)
+        print(f"[objectbox] Beginning read TX for thread {thread_id}...")
+        self._read_tx[thread_id] = obx_txn_read(self._ob._c_store)
 
     def _ensure_no_read_tx(self):
         """ Ensures no read TX exists. """
-        if not hasattr(self, "_read_tx"):
-            return
-        print("[objectbox] Ending read TX... ")
-        obx_txn_close(self._read_tx)
-        del self._read_tx
+        thread_ids = self._read_tx.keys()
+        for thread_id in thread_ids:
+            print(f"[objectbox] Ending read TX for thread {thread_id}... ")
+            obx_txn_close(self._read_tx[thread_id])
+            del self._read_tx[thread_id]
 
     def done(self):
         self._ensure_no_read_tx()
@@ -104,18 +108,21 @@ class ObjectBox(BaseANN):
 
     def batch_query(self, q_batch: np.array, n: int) -> None:
         print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
-        pool = ThreadPool()
 
-        self._ensure_read_tx()
-        self._batch_results = pool.map(lambda q: self.query(q, n), q_batch)
+        def _run_batch_query(q: np.ndarray):
+            self._ensure_read_tx()
+            return self.query(q, n)
+
+        pool = ThreadPool()
+        self._batch_results = pool.map(lambda q: _run_batch_query(q), q_batch)
 
     def get_batch_results(self) -> np.array:
         return self._batch_results
 
     def __str__(self) -> str:
         return f"objectbox(" \
-            f"dimensions={self._dimensions}, " \
-            f"m={self._m}, " \
-            f"ef_construction={self._ef_construction}, " \
-            f"ef_search={self._ef_search}" \
-            f")"
+               f"dimensions={self._dimensions}, " \
+               f"m={self._m}, " \
+               f"ef_construction={self._ef_construction}, " \
+               f"ef_search={self._ef_search}" \
+               f")"
