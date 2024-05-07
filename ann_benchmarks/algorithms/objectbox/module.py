@@ -77,6 +77,7 @@ class ObjectBox(BaseANN):
 
         self._batch_results = None
         self._ef_search = None
+        self._thread_local = threading.local()
 
     def done(self):
         print(f"[objectbox] Done!")
@@ -105,9 +106,11 @@ class ObjectBox(BaseANN):
         self._ef_search = ef
 
     def query(self, q: np.array, n: int) -> np.array:
-        query = self._box.query(self._vector_property.nearest_neighbor(q, self._ef_search)).build()
+        if not hasattr(self._thread_local,'query'):
+            self._thread_local.query = self._box.query(self._vector_property.nearest_neighbor(q, self._ef_search).alias("q")).build()
+        query = self._thread_local.query
         query.limit(n)
-
+        query.set_parameter_alias_vector_f32("q", q)
         return np.array([id_ for id_, _ in query.find_ids_with_scores()]) - 1  # Because OBX IDs start at 1
 
     def batch_query(self, q_batch: np.array, n: int) -> None:
