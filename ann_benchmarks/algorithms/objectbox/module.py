@@ -3,6 +3,7 @@ import numpy as np
 from typing import *
 from multiprocessing.pool import ThreadPool
 import threading
+from time import time
 from ..base.module import BaseANN
 import objectbox
 from objectbox import *
@@ -11,7 +12,16 @@ from objectbox.model.properties import HnswIndex, HnswDistanceType
 from objectbox.c import *
 
 
-def create_entity_class(dimensions: int, m: int, ef_construction: int):
+def _convert_metric_to_distance_type(metric: str) -> HnswDistanceType:
+    if metric == 'euclidean':
+        return HnswDistanceType.EUCLIDEAN
+    elif metric == 'angular':
+        return HnswDistanceType.COSINE
+    else:
+        raise ValueError(f"Metric type not supported: {metric}")
+
+
+def _create_entity_class(dimensions: int, distance_type: HnswDistanceType, m: int, ef_construction: int):
     """ Dynamically define an Entity class according to the parameters. """
 
     @Entity(id=1, uid=1)
@@ -21,7 +31,7 @@ def create_entity_class(dimensions: int, m: int, ef_construction: int):
                           index=HnswIndex(
                               id=1, uid=10001,
                               dimensions=dimensions,
-                              distance_type=HnswDistanceType.EUCLIDEAN,
+                              distance_type=distance_type,
                               neighbors_per_node=m,
                               indexing_search_count=ef_construction
                           ))
@@ -35,63 +45,57 @@ class ObjectBox(BaseANN):
 
     def __init__(self, metric, dimensions, m: int, ef_construction: int):
         print(f"[objectbox] Version: {objectbox.version}")
-        print(f"[objectbox] Metric: {metric}, Dimensions: {dimensions}, M: {m}, ef construction: {ef_construction}")
+        print(f"[objectbox] Metric: {metric}, "
+              f"Dimensions: {dimensions}, "
+              f"M: {m}, "
+              f"ef construction: {ef_construction}")
 
         self._dimensions = dimensions
+        self._distance_type = _convert_metric_to_distance_type(metric)
         self._m = m
         self._ef_construction = ef_construction
 
-        self._db_path = "./test-db"
+        self._db_path = "./benchmark-db"
         print(f"[objectbox] DB path: \"{self._db_path}\"")
 
-        self._entity_class = create_entity_class(dimensions, m, ef_construction)
+        self._entity_class = _create_entity_class(
+            self._dimensions, self._distance_type, self._m, self._ef_construction)
 
         model = objectbox.Model()
         model.entity(self._entity_class, last_property_id=IdUid(2, 1002))
         model.last_entity_id = IdUid(1, 1)
         model.last_index_id = IdUid(1, 10001)
 
-        self._ob = objectbox.Builder().model(model).directory(self._db_path).build()
+        self._ob = objectbox.Builder() \
+            .model(model) \
+            .directory(self._db_path) \
+            .max_db_size_in_kb(2097152) \
+            .build()
         self._vector_property = self._entity_class.get_property("vector")
 
         self._box = objectbox.Box(self._ob, self._entity_class)
 
-        self._read_tx = {}
-
         self._batch_results = None
         self._ef_search = None
 
-    def _ensure_read_tx(self):
-        """ Ensures a read TX is created for the current thread. """
-        thread_id = threading.get_ident()
-        if thread_id in self._read_tx:
-            return
-        print(f"[objectbox] Beginning read TX for thread {thread_id}...")
-        self._read_tx[thread_id] = obx_txn_read(self._ob._c_store)
-
-    def _ensure_no_read_tx(self):
-        """ Ensures no read TX exists. """
-        thread_ids = self._read_tx.keys()
-        for thread_id in thread_ids:
-            print(f"[objectbox] Ending read TX for thread {thread_id}... ")
-            obx_txn_close(self._read_tx[thread_id])
-            del self._read_tx[thread_id]
-
     def done(self):
-        self._ensure_no_read_tx()
+        print(f"[objectbox] Done!")
 
     def fit(self, x: np.array) -> None:
-        self._ensure_no_read_tx()
-
         BATCH_SIZE = 10000
 
         num_objects, vector_dim = x.shape
+        num_inserted_objects = self._box.count()
+        started_at = time()
 
-        if self._box.count() != num_objects:
+        print(f"[objectbox] Already inserted objects: {num_inserted_objects} ({num_objects})")
+
+        if num_inserted_objects != num_objects:
             self._box.remove_all()
             for i in range(0, num_objects, BATCH_SIZE):
                 self._box.put(*[self._entity_class(vector=vector) for vector in x[i:i + BATCH_SIZE]])
-                print(f"[objectbox] Inserted {i + BATCH_SIZE} objects...")
+                print(f"[objectbox] Inserted {i + BATCH_SIZE}/{num_objects} objects... "
+                      f"Elapsed time: {time() - started_at:.1f}s")
             assert self._box.count() == num_objects
         else:
             print(f"[objectbox] DB was already filled!")
@@ -110,7 +114,6 @@ class ObjectBox(BaseANN):
         print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
 
         def _run_batch_query(q: np.ndarray):
-            self._ensure_read_tx()
             return self.query(q, n)
 
         pool = ThreadPool()

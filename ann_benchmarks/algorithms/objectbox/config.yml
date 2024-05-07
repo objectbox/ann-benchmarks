@@ -1,5 +1,5 @@
 float:
-  euclidean:
+  any:
   - base_args: ['@metric', '@dimension']
     constructor: ObjectBox
     disabled: false
