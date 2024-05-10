@@ -8,20 +8,20 @@ from ..base.module import BaseANN
 import objectbox
 from objectbox import *
 from objectbox.model import *
-from objectbox.model.properties import HnswIndex, HnswDistanceType
+from objectbox.model.properties import HnswIndex, VectorDistanceType
 from objectbox.c import *
 
 
-def _convert_metric_to_distance_type(metric: str) -> HnswDistanceType:
+def _convert_metric_to_distance_type(metric: str) -> VectorDistanceType:
     if metric == 'euclidean':
-        return HnswDistanceType.EUCLIDEAN
+        return VectorDistanceType.EUCLIDEAN
     elif metric == 'angular':
-        return HnswDistanceType.COSINE
+        return VectorDistanceType.COSINE
     else:
         raise ValueError(f"Metric type not supported: {metric}")
 
 
-def _create_entity_class(dimensions: int, distance_type: HnswDistanceType, m: int, ef_construction: int):
+def _create_entity_class(dimensions: int, distance_type: VectorDistanceType, m: int, ef_construction: int):
     """ Dynamically define an Entity class according to the parameters. """
 
     @Entity(id=1, uid=1)
@@ -41,7 +41,7 @@ def _create_entity_class(dimensions: int, distance_type: HnswDistanceType, m: in
 
 class ObjectBox(BaseANN):
     _db_path: str
-    _ob: ObjectBox
+    _store: ObjectBox
 
     def __init__(self, metric, dimensions, m: int, ef_construction: int):
         print(f"[objectbox] Version: {objectbox.version}")
@@ -66,14 +66,14 @@ class ObjectBox(BaseANN):
         model.last_entity_id = IdUid(1, 1)
         model.last_index_id = IdUid(1, 10001)
 
-        self._ob = objectbox.Builder() \
-            .model(model) \
-            .directory(self._db_path) \
-            .max_db_size_in_kb(2097152) \
-            .build()
+        self._store = objectbox.Store(
+                model=model,
+                directory=self._db_path,
+                max_db_size_in_kb=2097152
+        )
         self._vector_property = self._entity_class.get_property("vector")
 
-        self._box = objectbox.Box(self._ob, self._entity_class)
+        self._box = self._store.box(self._entity_class)
 
         self._batch_results = None
         self._ef_search = None
