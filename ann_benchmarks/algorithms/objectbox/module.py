@@ -104,6 +104,7 @@ class ObjectBox(BaseANN):
     def set_query_arguments(self, ef: float):
         print(f"[objectbox] Query search params; EF: {ef}")
         self._ef_search = ef
+        self._thread_local = threading.local()  # reset as all threads need to rebuild the query for the new efSearch
 
     def query(self, q: np.array, n: int) -> np.array:
         if not hasattr(self._thread_local,'query'):
