@@ -40,9 +40,6 @@ def _create_entity_class(dimensions: int, distance_type: VectorDistanceType, m: 
 
 
 class ObjectBox(BaseANN):
-    _db_path: str
-    _store: ObjectBox
-
     def __init__(self, metric, dimensions, m: int, ef_construction: int):
         print(f"[objectbox] Version: {objectbox.version}")
         print(f"[objectbox] Metric: {metric}, "
@@ -66,23 +63,37 @@ class ObjectBox(BaseANN):
         model.last_entity_id = IdUid(1, 1)
         model.last_index_id = IdUid(1, 10001)
 
-        self._store = objectbox.Store(
-                model=model,
-                directory=self._db_path,
-                max_db_size_in_kb=2097152
-        )
+        self._store = objectbox.Store(model=model, directory=self._db_path, max_db_size_in_kb=2097152)
         self._vector_property = self._entity_class.get_property("vector")
 
         self._box = self._store.box(self._entity_class)
+        self._read_tx = None
 
         self._batch_results = None
         self._ef_search = None
-        self._thread_local = threading.local()
+
+    def _ensure_read_context_created(self):
+        if self._read_tx is not None:
+            return
+        self._read_tx = obx_txn_read(self._store._c_store)
+
+        # Create the query object with dummy values (will be set afterward)
+        dummy_query = [0.] * self._dimensions
+        self._query = self._box.query(
+            self._vector_property.nearest_neighbor(dummy_query, 1).alias("q")).build()
+
+    def _ensure_read_context_destroyed(self):
+        if self._read_tx is None:
+            return
+        obx_txn_close(self._read_tx)
 
     def done(self):
         print(f"[objectbox] Done!")
+        self._ensure_read_context_created()
 
     def fit(self, x: np.array) -> None:
+        self._ensure_read_context_destroyed()
+
         BATCH_SIZE = 10000
 
         num_objects, vector_dim = x.shape
@@ -101,27 +112,24 @@ class ObjectBox(BaseANN):
         else:
             print(f"[objectbox] DB was already filled!")
 
-    def set_query_arguments(self, ef: float):
+    def set_query_arguments(self, ef: int):
         print(f"[objectbox] Query search params; EF: {ef}")
         self._ef_search = ef
-        self._thread_local = threading.local()  # reset as all threads need to rebuild the query for the new efSearch
+
+        self._ensure_read_context_created()
+        self._query.set_parameter_alias_int("q", ef)
 
     def query(self, q: np.array, n: int) -> np.array:
-        if not hasattr(self._thread_local,'query'):
-            self._thread_local.query = self._box.query(self._vector_property.nearest_neighbor(q, self._ef_search).alias("q")).build()
-        query = self._thread_local.query
-        query.limit(n)
-        query.set_parameter_alias_vector_f32("q", q)
-        return np.array([id_ for id_, _ in query.find_ids_with_scores()]) - 1  # Because OBX IDs start at 1
+        self._ensure_read_context_created()
+        self._query.set_parameter_alias_vector_f32("q", q)
+        self._query.limit(n)
+
+        return np.array([id_ for id_, _ in self._query.find_ids_with_scores()]) - 1  # Because OBX IDs start at 1
 
     def batch_query(self, q_batch: np.array, n: int) -> None:
         print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
 
-        def _run_batch_query(q: np.ndarray):
-            return self.query(q, n)
-
-        pool = ThreadPool()
-        self._batch_results = pool.map(lambda q: _run_batch_query(q), q_batch)
+        self._batch_results = [self.query(q, n) for q in q_batch]
 
     def get_batch_results(self) -> np.array:
         return self._batch_results
