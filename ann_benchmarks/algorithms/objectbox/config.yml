@@ -10,7 +10,7 @@ float:
       default:
         args: [
           [8, 16, 32, 64, 96],  # M
-          [16, 32, 64, 128, 256, 512]  # ef_construction
+          [32, 64, 128, 256, 512]  # ef_construction (removed 16 as it yields in bad quality results)
         ]
         query_args: [
           [10, 16, 32, 64, 128, 256, 512]  # ef; 10 is the lowest possible value because we search for 10 nearest neighbors
