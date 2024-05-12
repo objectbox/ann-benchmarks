@@ -9,10 +9,10 @@ float:
     run_groups:
       default:
         args: [
-          [16, 32, 64, 96],  # M (note: M below 16 did not increase speed, just worsened quality (fashion-mnist data))
+          [8, 16, 32, 64, 96],  # M
           [16, 32, 64, 128, 256, 512]  # ef_construction
         ]
         query_args: [
-          [10, 16, 32, 64, 128, 256]  # ef; 10 is the lowest possible value because we search for 10 nearest neighbors
+          [10, 16, 32, 64, 128, 256, 512]  # ef; 10 is the lowest possible value because we search for 10 nearest neighbors
         ]
 
