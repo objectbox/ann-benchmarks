@@ -117,11 +117,8 @@ class ObjectBox(BaseANN):
     def batch_query(self, q_batch: np.array, n: int) -> None:
         print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
 
-        def _run_batch_query(q: np.ndarray):
-            return self.query(q, n)
-
-        pool = ThreadPool()
-        self._batch_results = pool.map(lambda q: _run_batch_query(q), q_batch)
+        with self._store.read_tx():
+            self._batch_results = [self.query(q, n) for q in q_batch]
 
     def get_batch_results(self) -> np.array:
         return self._batch_results
