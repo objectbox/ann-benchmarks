@@ -55,7 +55,9 @@ class ObjectBox(BaseANN):
         self._m = m
         self._ef_construction = ef_construction
 
-        self._db_path = "./benchmark-db"
+        self._db_path = "./objectbox-benchmark-db"
+        objectbox.Store.remove_db_files(self._db_path)  # Remove any preexisting DB; e.g. let IDs start at 1
+
         print(f"[objectbox] DB path: \"{self._db_path}\"")
 
         self._entity_class = _create_entity_class(
@@ -112,7 +114,7 @@ class ObjectBox(BaseANN):
         query = self._thread_local.query
         query.limit(n)
         query.set_parameter_alias_vector_f32("q", q)
-        return np.array([id_ for id_, _ in query.find_ids_with_scores()]) - 1  # Because OBX IDs start at 1
+        return np.array(query.find_ids_by_score()) - 1  # Because OBX IDs start at 1
 
     def batch_query(self, q_batch: np.array, n: int) -> None:
         print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
