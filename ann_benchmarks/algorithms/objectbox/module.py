@@ -116,12 +116,6 @@ class ObjectBox(BaseANN):
         query.set_parameter_alias_vector_f32("q", q)
         return np.array(query.find_ids_by_score()) - 1  # Because OBX IDs start at 1
 
-    def batch_query(self, q_batch: np.array, n: int) -> None:
-        print(f"[objectbox] Query batch shape: {q_batch.shape}; N: {n}")
-
-        with self._store.read_tx():
-            self._batch_results = [self.query(q, n) for q in q_batch]
-
     def get_batch_results(self) -> np.array:
         return self._batch_results
 
