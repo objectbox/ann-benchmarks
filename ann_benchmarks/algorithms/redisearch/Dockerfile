@@ -1,4 +1,4 @@
-FROM redislabs/redisearch as redisearch
+FROM redis/redis-stack-server as redis-server
 FROM ann-benchmarks
 
 # Install Redis
@@ -8,6 +8,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://
 RUN apt-get update
 RUN apt-get install -y redis
 
-COPY --from=redisearch /usr/lib/redis/modules/redisearch.so /usr/lib/redis/modules/redisearch.so
+# Copy redisearch module from /redis/redis-stack-server build image
+COPY --from=redis-server /opt/redis-stack/lib/redisearch.so /opt/redis-stack/lib/redisearch.so
 
-RUN pip3 install redisearch redis
+RUN pip3 install redis

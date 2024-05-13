@@ -17,7 +17,7 @@ class Redisearch(BaseANN):
 
     def fit(self, X):
         # Start Redis in the background
-        cmd = "redis-server --daemonize yes --loadmodule /usr/lib/redis/modules/redisearch.so"
+        cmd = "redis-server --daemonize yes --loadmodule /opt/redis-stack/lib/redisearch.so"
         print("Starting Redis:", cmd)
         subprocess.run(cmd, shell=True, check=True, stdout=sys.stdout, stderr=sys.stderr)
 
