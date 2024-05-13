@@ -23,10 +23,6 @@ float:
         arg_groups: [{M: 36, efConstruction: 500}]
         args: {}
         query_args: [[10, 20, 40, 80, 120, 200, 400, 600, 800]]
-      M-4:
-        arg_groups: [{M: 4, efConstruction: 500}]
-        args: {}
-        query_args: [[10, 20, 40, 80, 120, 200, 400, 600, 800]]
       M-48:
         arg_groups: [{M: 48, efConstruction: 500}]
         args: {}
