@@ -1,6 +1,3 @@
-from os import path
-import numpy as np
-from typing import *
 from multiprocessing.pool import ThreadPool
 import threading
 from time import time
@@ -41,7 +38,7 @@ def _create_entity_class(dimensions: int, distance_type: VectorDistanceType, m: 
 
 class ObjectBox(BaseANN):
     _db_path: str
-    _store: ObjectBox
+    _store: Store
 
     def __init__(self, metric, dimensions, m: int, ef_construction: int):
         print(f"[objectbox] Version: {objectbox.version}")
@@ -69,9 +66,10 @@ class ObjectBox(BaseANN):
         model.last_index_id = IdUid(1, 10001)
 
         self._store = objectbox.Store(
-                model=model,
-                directory=self._db_path,
-                max_db_size_in_kb=2097152
+            model=model,
+            directory=self._db_path,
+            # 100 GB (note: glove-100-angular with M=64 reached 2 GB, so 100 GB should be enough)
+            max_db_size_in_kb=100 * 1024 * 1024
         )
         self._vector_property = self._entity_class.get_property("vector")
 
@@ -109,8 +107,9 @@ class ObjectBox(BaseANN):
         self._thread_local = threading.local()  # reset as all threads need to rebuild the query for the new efSearch
 
     def query(self, q: np.array, n: int) -> np.array:
-        if not hasattr(self._thread_local,'query'):
-            self._thread_local.query = self._box.query(self._vector_property.nearest_neighbor(q, self._ef_search).alias("q")).build()
+        if not hasattr(self._thread_local, 'query'):
+            self._thread_local.query = self._box.query(
+                self._vector_property.nearest_neighbor(q, self._ef_search).alias("q")).build()
         query = self._thread_local.query
         query.limit(n)
         query.set_parameter_alias_vector_f32("q", q)
