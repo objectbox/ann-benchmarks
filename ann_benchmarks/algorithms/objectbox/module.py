@@ -2,12 +2,9 @@ from multiprocessing.pool import ThreadPool
 import threading
 from time import time
 from ..base.module import BaseANN
-import objectbox
 from objectbox import *
-from objectbox.model import *
-from objectbox.model.properties import HnswIndex, VectorDistanceType
-from objectbox.c import *
-
+import objectbox
+import numpy as np
 
 def _convert_metric_to_distance_type(metric: str) -> VectorDistanceType:
     if metric == 'euclidean':
@@ -21,12 +18,10 @@ def _convert_metric_to_distance_type(metric: str) -> VectorDistanceType:
 def _create_entity_class(dimensions: int, distance_type: VectorDistanceType, m: int, ef_construction: int):
     """ Dynamically define an Entity class according to the parameters. """
 
-    @Entity(id=1, uid=1)
+    @Entity()
     class VectorEntity:
-        id = Id(id=1, uid=1001)
-        vector = Property(np.ndarray, type=PropertyType.floatVector, id=2, uid=1002,
-                          index=HnswIndex(
-                              id=1, uid=10001,
+        id = Id()
+        vector = Float32Vector(index=HnswIndex(
                               dimensions=dimensions,
                               distance_type=distance_type,
                               neighbors_per_node=m,
@@ -53,25 +48,19 @@ class ObjectBox(BaseANN):
         self._ef_construction = ef_construction
 
         self._db_path = "./objectbox-benchmark-db"
-        objectbox.Store.remove_db_files(self._db_path)  # Remove any preexisting DB; e.g. let IDs start at 1
+        Store.remove_db_files(self._db_path)  # Remove any preexisting DB; e.g. let IDs start at 1
 
         print(f"[objectbox] DB path: \"{self._db_path}\"")
 
         self._entity_class = _create_entity_class(
             self._dimensions, self._distance_type, self._m, self._ef_construction)
 
-        model = objectbox.Model()
-        model.entity(self._entity_class, last_property_id=IdUid(2, 1002))
-        model.last_entity_id = IdUid(1, 1)
-        model.last_index_id = IdUid(1, 10001)
-
-        self._store = objectbox.Store(
-            model=model,
+        self._store = Store(
             directory=self._db_path,
             # 100 GB (note: glove-100-angular with M=64 reached 2 GB, so 100 GB should be enough)
             max_db_size_in_kb=100 * 1024 * 1024
         )
-        self._vector_property = self._entity_class.get_property("vector")
+        self._vector_property = self._entity_class.vector
 
         self._box = self._store.box(self._entity_class)
 
@@ -109,7 +98,7 @@ class ObjectBox(BaseANN):
     def query(self, q: np.array, n: int) -> np.array:
         if not hasattr(self._thread_local, 'query'):
             self._thread_local.query = self._box.query(
-                self._vector_property.nearest_neighbor(q, self._ef_search).alias("q")).build()
+                self._entity_class.vector.nearest_neighbor(q, self._ef_search).alias("q")).build()
         query = self._thread_local.query
         query.limit(n)
         query.set_parameter_alias_vector_f32("q", q)
